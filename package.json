@@ -1,0 +1,20 @@
+{
+	"name": "portero",
+	"version": "0.1.0",
+	"description": "Local port & domain allocator for parallel dev sessions — one command reserves ports and *.test HTTPS domains per git worktree.",
+	"license": "MIT",
+	"author": "Gabriel Martínez Rodríguez",
+	"repository": "github:GabrielMartinezRodriguez/portero",
+	"type": "module",
+	"bin": {
+		"portero": "src/index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"compile": "bun build --compile src/index.ts --outfile dist/portero"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"keywords": ["ports", "localhost", "worktree", "caddy", "dnsmasq", "dev-environment", "monorepo"]
+}
