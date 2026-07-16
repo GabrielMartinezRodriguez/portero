@@ -20,9 +20,28 @@ export function renderCaddyfile(registry: Registry): string {
 }
 
 async function run(cmd: string[]): Promise<{ ok: boolean; stderr: string }> {
-	const proc = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" });
+	const proc = Bun.spawn(cmd, { stdin: "ignore", stdout: "ignore", stderr: "pipe" });
 	const stderr = await new Response(proc.stderr).text();
 	return { ok: (await proc.exited) === 0, stderr };
+}
+
+/**
+ * For commands that daemonize (`caddy start`): the daemon inherits stdio, so
+ * piping stderr and reading it to EOF would block until the daemon *exits*.
+ * Never pipe here — discard everything and only await the launcher's exit.
+ */
+async function runQuiet(cmd: string[]): Promise<boolean> {
+	const proc = Bun.spawn(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+	return (await proc.exited) === 0;
+}
+
+async function adminUp(): Promise<boolean> {
+	try {
+		const res = await fetch("http://localhost:2019/config/", { signal: AbortSignal.timeout(1500) });
+		return res.ok;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -38,8 +57,13 @@ export async function syncCaddy(registry: Registry): Promise<void> {
 	}
 	const reload = await run(["caddy", "reload", "--config", path, "--adapter", "caddyfile"]);
 	if (reload.ok) return;
-	const start = await run(["caddy", "start", "--config", path, "--adapter", "caddyfile"]);
-	if (!start.ok) {
-		console.error(`portero: warning: could not reload or start caddy:\n${start.stderr.trim()}`);
+	if (await adminUp()) {
+		// Caddy is running but rejected the config — starting another instance won't help.
+		console.error(`portero: warning: caddy rejected the config:\n${reload.stderr.trim()}`);
+		return;
+	}
+	await runQuiet(["caddy", "start", "--config", path, "--adapter", "caddyfile"]);
+	if (!(await adminUp())) {
+		console.error(`portero: warning: caddy did not come up — run \`caddy run --config ${path}\` to see why`);
 	}
 }
