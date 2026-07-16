@@ -13,7 +13,16 @@ export function renderCaddyfile(registry: Registry): string {
 		for (const name of Object.keys(entry.services).sort()) {
 			const service = entry.services[name];
 			if (service.type !== "http" || !service.domain) continue;
-			lines.push(`${service.domain} {`, `\treverse_proxy 127.0.0.1:${service.port}`, "}", "");
+			lines.push(
+				`${service.domain} {`,
+				`\treverse_proxy 127.0.0.1:${service.port} {`,
+				// Dev servers with host checking (e.g. vite) reject unknown Host
+				// headers; hand them the upstream's own host:port instead.
+				`\t\theader_up Host {http.reverse_proxy.upstream.hostport}`,
+				"\t}",
+				"}",
+				"",
+			);
 		}
 	}
 	return lines.join("\n");
