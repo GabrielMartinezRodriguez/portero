@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderCaddyfile } from "./caddy";
 import { envify, sanitizeLabel, serviceDomain } from "./naming";
-import { allocatePort, isPortFree } from "./ports";
+import { allocatePort, isPortListening } from "./ports";
 import { readRegistry, writeRegistry } from "./registry";
 import { parseServiceSpec } from "./spec";
 
@@ -54,18 +54,26 @@ describe("parseServiceSpec", () => {
 });
 
 describe("ports", () => {
-	test("allocatePort returns a free port and reserves it", () => {
+	test("allocatePort returns a free port and reserves it", async () => {
 		const taken = new Set<number>();
-		const port = allocatePort(taken);
+		const port = await allocatePort(taken);
 		expect(port).toBeGreaterThanOrEqual(20000);
 		expect(port).toBeLessThanOrEqual(49151);
 		expect(taken.has(port)).toBe(true);
 	});
-	test("isPortFree detects a listener", () => {
+	test("isPortListening detects a loopback listener", async () => {
 		const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
-		expect(isPortFree(listener.port)).toBe(false);
+		expect(await isPortListening(listener.port)).toBe(true);
 		listener.stop(true);
-		expect(isPortFree(listener.port)).toBe(true);
+		expect(await isPortListening(listener.port)).toBe(false);
+	});
+	test("isPortListening detects a wildcard (0.0.0.0) listener", async () => {
+		// The bug this guards against: a bind() probe to 127.0.0.1 succeeds under
+		// SO_REUSEADDR while a wildcard listener holds the port (vite --host,
+		// docker-proxy), misreporting it as free.
+		const listener = Bun.listen({ hostname: "0.0.0.0", port: 0, socket: { data() {} } });
+		expect(await isPortListening(listener.port)).toBe(true);
+		listener.stop(true);
 	});
 });
 

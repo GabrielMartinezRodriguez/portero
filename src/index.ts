@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import pkg from "../package.json";
 import { syncCaddy } from "./caddy";
 import { detectProject, detectSession, envify, sanitizeLabel, serviceDomain } from "./naming";
-import { allocatePort, isPortFree } from "./ports";
+import { allocatePort, isPortListening } from "./ports";
 import {
 	readRegistry,
 	type Registry,
@@ -109,7 +109,7 @@ async function claim(args: string[]): Promise<void> {
 			}
 			entry.services[spec.name] = {
 				type: spec.type,
-				port: allocatePort(taken),
+				port: await allocatePort(taken),
 				domain: spec.type === "http" ? serviceDomain(spec.name, session, project) : undefined,
 				envVar: spec.envVar,
 			};
@@ -185,7 +185,7 @@ function shortenPath(path: string): string {
 	return path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path;
 }
 
-function ls(args: string[]): void {
+async function ls(args: string[]): Promise<void> {
 	const { values } = parseArgs({ args, options: { json: { type: "boolean" } } });
 	const registry = readRegistry();
 	if (values.json) {
@@ -206,7 +206,7 @@ function ls(args: string[]): void {
 				entry.session,
 				name,
 				String(service.port),
-				isPortFree(service.port) ? "down" : "up",
+				(await isPortListening(service.port)) ? "up" : "down",
 				service.domain ?? "-",
 				shortenPath(entry.worktree),
 			]);

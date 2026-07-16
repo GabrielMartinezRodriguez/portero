@@ -1,6 +1,6 @@
 {
 	"name": "portero",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Local port & domain allocator for parallel dev sessions — one command reserves ports and *.test HTTPS domains per git worktree.",
 	"license": "MIT",
 	"author": "Gabriel Martínez Rodríguez",
