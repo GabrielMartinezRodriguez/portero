@@ -10,13 +10,15 @@ $ echo "$PORTERO_URL_API  ->  $PORT"
 https://api.gps-fix.ginger.test  ->  42311
 ```
 
-Portero does exactly three things:
+Portero does three things, plus one for shared hardware:
 
 1. **Reserves free ports** in a machine-global registry (`~/.local/state/portero/registry.json`), so two sessions can never collide — across projects, not just within one.
 2. **Routes domains**: every `http` service gets `https://<service>.<session>.<project>.test` via a portero-managed [Caddy](https://caddyserver.com) reverse proxy, with locally-trusted TLS. `tcp` services (MongoDB, Postgres…) just get a port.
 3. **Lists and releases** them: `portero ls` shows what every worktree is using and whether it's live; `portero release --all` frees everything at once.
 
-It deliberately does **not** create worktrees, start your services, or manage processes. Your worktree tool (plain `git worktree`, an agent IDE, a Makefile) calls portero from its setup script and does the rest with the env vars it gets back.
+4. **Hands out turns** on singleton resources (`portero lease`): only one agent can drive the iOS simulator at a time, so the others queue FIFO instead of fighting over it.
+
+It deliberately does **not** create worktrees or start your services. The one process it will touch is what you explicitly attach to a lease, so a dead holder's Metro does not outlive its turn. Your worktree tool (plain `git worktree`, an agent IDE, a Makefile) calls portero from its setup script and does the rest with the env vars it gets back.
 
 ## Install
 
@@ -86,6 +88,27 @@ portero release --all              # everything, full stop
 ### `portero gc`
 
 Releases every session whose worktree directory no longer exists — run it after deleting worktrees without ceremony.
+
+### `portero lease`
+
+Some resources exist once per machine no matter how many worktrees you have — the iOS simulator, a phone on USB, Metro's default port. Leases give parallel agents exclusive, queued turns on them:
+
+```bash
+portero lease acquire ios-sim --wait --note "maestro: onboarding flow"   # blocks FIFO until it's yours
+METRO_PID=$(start-metro-somehow)
+portero lease attach ios-sim "$METRO_PID"   # dies with the lease
+# ... drive the simulator ...
+portero lease release ios-sim               # kills attached processes, next in queue gets it
+```
+
+- **Holder** = the current git worktree (`--holder` to override). Acquiring again from the same worktree renews.
+- **Self-healing**: the lease records the coding agent (`claude` / `codex` ancestor process) that took it. If that agent exits, or the lease is not renewed within its TTL (`--ttl`, default 45m), the next acquire reclaims it and kills its attached processes.
+- **Queue**: `--wait` joins a FIFO queue (a released lease goes to the head, not to whoever asks first); waiters that stop polling drop out after 30s. Without `--wait`, a busy resource exits `3` immediately with who holds it, so an agent can do other work first. `--timeout` exits `4`.
+- **Renewing** tells the holder how many agents are waiting, as a nudge to release.
+- `portero lease run ios-sim --wait -- maestro test flow.yaml` wraps acquire → run → release for one-shot jobs.
+- `portero lease status [--json]` shows holder, age, expiry, attached pids and the queue.
+
+State lives in `~/.local/state/portero/leases.json`, under the same lock as the registry.
 
 ## Wiring it into a worktree setup script
 
