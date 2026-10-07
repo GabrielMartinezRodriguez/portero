@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import pkg from "../package.json";
 import { syncCaddy } from "./caddy";
+import { leaseCommand } from "./leaseCli";
 import { detectProject, detectSession, envify, sanitizeLabel, serviceDomain } from "./naming";
 import { allocatePort, isPortListening } from "./ports";
 import {
@@ -30,6 +31,10 @@ Usage:
                                          a whole project, or everything.
   portero ls [--json]                    List sessions, services, ports, domains, status
   portero gc                             Release sessions whose worktree no longer exists
+  portero lease acquire|release|attach|run|status <resource> ...
+                                         Exclusive turns on a singleton resource shared by
+                                         parallel agents (e.g. the iOS simulator), with a
+                                         FIFO queue. See \`portero lease help\`.
 
 Service types: http (port + https://service.session.project.test) | tcp (port only).
 
@@ -37,6 +42,7 @@ Examples:
   eval "$(portero claim --project ginger --service api:http:PORT --service db:tcp:MONGO_PORT --env)"
   portero release --project ginger
   portero release --all
+  portero lease acquire ios-sim --wait --note "maestro flow for onboarding"
 `;
 
 function die(message: string): never {
@@ -243,6 +249,8 @@ async function main(): Promise<void> {
 			return ls(rest);
 		case "gc":
 			return gc();
+		case "lease":
+			return leaseCommand(rest);
 		case "setup":
 			return setup();
 		case "--version":
